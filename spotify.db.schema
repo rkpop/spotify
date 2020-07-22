@@ -1,0 +1,12 @@
+CREATE TABLE sqlite_sequence(name,seq);
+
+CREATE TABLE processed (
+  uri text PRIMARY KEY
+);
+
+CREATE TABLE playlists(
+  spotify_id text NOT NULL,
+  name text NOT NULL,
+  month text NOT NULL,
+  year INTEGER NOT NULL
+);
