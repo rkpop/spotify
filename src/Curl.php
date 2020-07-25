@@ -3,6 +3,13 @@ declare(strict_types = 1);
 
 require_once('Env.php');
 
+final class HTTPMethod {
+  const GET = 'GET';
+  const PUT = 'PUT';
+  const POST = 'POST';
+  const DELETE = 'DELETE';
+}
+
 /**
  * This is just a simple cURL wrapper because I find it way easier to work with
  * than the standard procedural way of doing it. 
@@ -11,7 +18,7 @@ final class Curl {
 
   // Should really abstract this into a URL class but who has time for that.
   private string $url;
-  private bool $post = false;
+  private string $method;
   private bool $json = false;
 
   private array $postParams = [];
@@ -23,20 +30,26 @@ final class Curl {
 
   private static function to(string $url): self {
     $request = new self();
+    $request->method = HTTPMethod::GET;
     $request->url = $url;
     $request->addHeader('User-Agent', Env::load()->get('UserAgent'));
     return $request;
   }
 
   public static function get(string $url): self {
-    $request = self::to($url);
-    $request = $request->setIsGet();
-    return $request;
+    return self::to($url);
   }
 
   public static function post(string $url): self {
     $request = self::to($url);
-    return $request->setIsPost();
+    $request->method = HTTPMethod::POST;
+    return $request;
+  }
+
+  public static function put(string $url): self {
+    $request = self::to($url);
+    $request->method = HTTPMethod::PUT;
+    return $request;
   }
 
   public function addHeader(string $header_name, $header_value): self {
@@ -60,16 +73,6 @@ final class Curl {
     return $this;
   }
 
-  private function setIsGet() {
-    $this->post = false;
-    return $this;
-  }
-
-  private function setIsPost() {
-    $this->post = true;
-    return $this;
-  }
-
   public function exec(): array {
     if (empty($this->queryParams)) {
       $request_uri = $this->url;
@@ -82,8 +85,11 @@ final class Curl {
     }
 
     $ch = curl_init($request_uri);
-    if ($this->post) {
-      curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $this->method);
+    if (
+      $this->method === HTTPMethod::POST
+      || $this->method === HTTPMethod::PUT
+    ) {
       if ($this->json) {
         $value = $this->body;
       } else {

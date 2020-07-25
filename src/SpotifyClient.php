@@ -24,6 +24,59 @@ final class SpotifyClient {
     }
   }
 
+  public static function createOrFetchCurrentPlaylist(): string {
+    // Magic values for a playlist that is perpetually set to the
+    // "current" month. Will change over automatically at the start of the
+    // next month.
+    $playlist_id = DB::connect()->getPlaylistID('Current', 0);
+    if ($playlist_id !== null) {
+      return $playlist_id;
+    }
+
+    $name = 'Current Month\'s Releases';
+    $description =
+      'Auto-updating playlist of the current month\'s K-Pop Releases. '.
+      'At the end of the month, it will be emptied out so the next month\'s '.
+      'releases can start being added.';
+    $body = [
+      'name' => $name,
+      'public' => true,
+      'description' => $description,
+    ];
+    $uri = Env::load()->get('APIURI').'/me/playlists';
+    $response = Curl::post($uri)
+      ->addHeader('Authorization', self::getBearerHeader())
+      ->setJsonBody(json_encode($body))
+      ->exec();
+
+    $spotify_id = $response['id'];
+
+    DB::connect()->addPlaylist(
+      $spotify_id,
+      $name,
+      $month,
+      $year,
+    );
+    return $spotify_id;
+  }
+
+  public static function clearOutCurrentPlaylist(): void {
+    $playlist_id = DB::connect()->getPlaylistID('Current', 0);
+    if ($playlist_id === null) {
+      throw new Exception('Could not find Current playlist in database');
+    }
+
+    $body = [
+      'uris' => [],
+    ];
+    $uri = Env::load()->get('APIURI')."/playlists/$playlist_id/tracks";
+    Curl::put($uri)
+      ->addHeader('Authorization', self::getBearerHeader())
+      ->addHeader('Content-Type', 'application/json')
+      ->setJsonBody(json_encode($body))
+      ->exec();
+  }
+
   public static function createOrFetchPlaylist(
     string $month,
     int $year
@@ -112,7 +165,6 @@ final class SpotifyClient {
     }
 
     self::addTracksToPlaylist($track_uris, $playlist_id);
-    DB::connect()->markAsProcessed($album_url);
   }
 
   private static function addTracksToPlaylist(
