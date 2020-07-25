@@ -5,8 +5,22 @@ require_once('Curl.php');
 require_once('DB.php');
 require_once('Env.php');
 
+/**
+ * Utils class for interacting with Spotify. Provides a grab bag of methods
+ * that handle Spotify authentication, authorization, making the actual HTTP
+ * requests, etc.
+ *
+ * Meant to be very high-level and easy to interface with to keep the main
+ * script runner as simple as possible.
+ */
 final class SpotifyClient {
 
+  /**
+   * Spotify tokens only last for one hour. Needless to say we will need to
+   * refresh this token often. This function is what does that.
+   * Grabs the refresh token Spotify gave us and gets a new access token.
+   * It then writes the new access token back to our Env file.
+   */
   public static function refreshAccessToken(): void {
     $uri = Env::load()->get('AuthURI').'/token';
     $response = Curl::post($uri)
@@ -24,6 +38,15 @@ final class SpotifyClient {
     }
   }
 
+  /**
+   * Checks the database to see if we have a playlist ID saved for the
+   * "Current" playlist. "Current" playlist is an alias for the releases
+   * of the current month we're in, rather than a playlist for the explicit
+   * month e.g. July, 2020.
+   * If we don't have a Current playlist, it creates one.
+   *
+   * @return string The Spotify ID of the Current playlist
+   */
   public static function createOrFetchCurrentPlaylist(): string {
     // Magic values for a playlist that is perpetually set to the
     // "current" month. Will change over automatically at the start of the
@@ -60,6 +83,12 @@ final class SpotifyClient {
     return $spotify_id;
   }
 
+  /**
+   * At the start of a new month, the "Current" playlist needs to start fresh.
+   * This method clears out all the songs in the "Current" playlist.
+   *
+   * @throws Exception Throws if we don't have a "Current" playlist registered
+   */
   public static function clearOutCurrentPlaylist(): void {
     $playlist_id = DB::connect()->getPlaylistID('Current', 0);
     if ($playlist_id === null) {
@@ -77,6 +106,17 @@ final class SpotifyClient {
       ->exec();
   }
 
+  /**
+   * Release playlists are per-month. So in order to reference a specific playlist,
+   * all we need to provide is the month and year. This method checks to see if we
+   * have a playlist saved for that particular month+year.
+   * If we do not, it creates a new one.
+   *
+   * @param string  The full name of the month e.g. July
+   * @param int     The current year e.g. 2020
+   *
+   * @return string The Spotify ID of the playlist
+   */
   public static function createOrFetchPlaylist(
     string $month,
     int $year
@@ -115,14 +155,22 @@ final class SpotifyClient {
     return $spotify_id;
   }
 
+  /**
+   * For a given release (track or album), add it to the given playlist.
+   * By default it will be inserted at the top of the playlist so the playlist
+   * is sorted with the most-recent releases on top of the playlist.
+   * It distinguishes between track links and ablum links by checking the
+   * URL structure (albums and tracks have different URL formats).
+   *
+   * @param string  The Spotify web URL of the given release (album or track)
+   * @param string  The Spotify Playlist ID the release should be added to
+   *
+   * @throws Exception  If we can't understand the format of the provided URL
+   */
   public static function addReleaseToPlaylist(
     string $release_url,
     string $playlist_id
   ): void {
-    if (DB::connect()->isProcessed($release_url)) {
-      return;
-    }
-
     preg_match('/.*\/album\/([A-z0-9]+)/', $release_url, $matches);
     if (count($matches) > 1) {
       self::addAlbumToPlaylist($release_url, $playlist_id);
@@ -140,14 +188,20 @@ final class SpotifyClient {
     throw new Exception("Could not parse release URL: $release_url");
   }
 
-  public static function addAlbumToPlaylist(
+  /**
+   * Takes the given album URl, fetches all of the individual tracks on the album,
+   * and then adds those tracks to the given playlist. Tracks are added in the
+   * same order they are on the album.
+   *
+   * @param string  The Spotify web URL of the album
+   * @param string  The Spotify Playlist ID the album tracks should be added to
+   *
+   * @throws Exception  If we cannot extract the Album ID from the provided URL
+   */
+  private static function addAlbumToPlaylist(
     string $album_url,
     string $playlist_id
   ): void {
-    if (DB::connect()->isProcessed($album_url)) {
-      return;
-    }
-
     preg_match('/.*\/album\/([A-z0-9]+)/', $album_url, $matches);
     if (count($matches) < 2) {
       throw new Exception('Could not extract album ID from URL: '.$album_url);
@@ -167,6 +221,13 @@ final class SpotifyClient {
     self::addTracksToPlaylist($track_uris, $playlist_id);
   }
 
+  /**
+   * Takes a provided list of Spotify Track URIs and adds them to the given
+   * playlist. Standard operation in the Spotify API.
+   *
+   * @param array<string> Spotify Track URIs (special format) to be added
+   * @param string        Spotify Playlist ID that is being added to
+   */
   private static function addTracksToPlaylist(
     array $track_uris,
     string $playlist_id
@@ -179,6 +240,15 @@ final class SpotifyClient {
       ->exec();
   }
 
+  /**
+   * Converts a Spotify URL track into a Spotify URI track. They are different.
+   * e.g.
+   *  Spotify URL: https://open.spotify.com/track/1UyYXStg3u4KoZSZix3LGF
+   *  Spotify URI: spotify:track:1UyYXStg3u4KoZSZix3LGF
+   *
+   * @param string  Spotify track web URL
+   * @return string Spotify track URI
+   */
   private static function getTrackURI(
     string $track_id
   ): string {
@@ -189,6 +259,13 @@ final class SpotifyClient {
     return $response['uri'];
   }
 
+  /**
+   * Returns the value for the Basic Auth header in accordance with Spotify's
+   * API requirements.
+   * Structure is: Basic base64(<client_id>:<client_secret>)
+   *
+   * @return string Header value
+   */
   private static function getBasicHeader(): string {
     $auth_info = sprintf(
       '%s:%s', 
@@ -199,6 +276,12 @@ final class SpotifyClient {
     return 'Basic '.$auth_info;
   }
 
+  /**
+   * Returns the value for the Bearer Auth header with the access token.
+   * Structure is: Bearer <access_token>
+   *
+   * @return string Header value
+   */
   private static function getBearerHeader(): string {
     return 'Bearer '.Env::load()->get('AccessToken');
   }

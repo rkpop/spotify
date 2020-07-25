@@ -4,8 +4,24 @@ declare(strict_types = 1);
 require_once('Curl.php');
 require_once('Env.php');
 
+/**
+ * Dead simple utils wrapper to interface with Reddit. We're not really using
+ * anything fancy here since at-present all that we need from Reddit is the
+ * contents of the releases wiki.
+ */
 final class RedditClient {
 
+  /**
+   * Pull up the releases wiki for the supplied month + year, find the releases
+   * table, for each entry, find the Spotify URL, and hand them over.
+   *
+   * Reddit allows you to just add .json to the end of any URL to get the page
+   * in that format which makes it SUPER easy to ingest for scripts.
+   *
+   * @param string          Full name of the month e.g. July
+   * @param int             Full year e.g. 2020
+   * @return array<string>  Array of all the Spotify URls that could be found
+   */
   public static function getReleases(
     string $month,
     int $year
@@ -16,6 +32,11 @@ final class RedditClient {
     $wiki_content = str_replace("\r\n", "\n", $wiki_content);
     $rows = explode("\n", $wiki_content);
 
+    // This looks a bit silly, but it's really just how we skip through the
+    // non-table parts of the wiki.
+    // Markdown tables separate their header and body with a row of |--|--...
+    // So, if we just ignore rows that don't start with that, we know we
+    // haven't gotten to the table yet.
     foreach ($rows as $row) {
       if (substr($row, 0, 3) !== '|--') {
         array_shift($rows);

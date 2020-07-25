@@ -12,7 +12,20 @@ final class HTTPMethod {
 
 /**
  * This is just a simple cURL wrapper because I find it way easier to work with
- * than the standard procedural way of doing it. 
+ * than the standard procedural way of doing it.
+ *
+ * This class employes the Builder Design Pattern.
+ * Empty requests are initialized with one of the provided HTTP method convenience
+ * functions and then specific request attributes are provided one at a time.
+ *
+ * Example:
+ *
+ *  Curl::get('https://youtube.com/watch')
+ *    ->addHeader('X-Dummy-Header', 'Dummy Value')
+ *    ->addQueryParam('v', 'dQw4w9WgXcQ')
+ *    ->exec();
+ *
+ *  Will execute GET https://youtube.com/watch?v=dQw4w9WgXcQ
  */
 final class Curl {
 
@@ -26,53 +39,114 @@ final class Curl {
   private array $headers = [];
   private string $body = '';
 
-  private function __construct() {}
-
-  private static function to(string $url): self {
-    $request = new self();
-    $request->method = HTTPMethod::GET;
-    $request->url = $url;
-    $request->addHeader('User-Agent', Env::load()->get('UserAgent'));
-    return $request;
+  private function __construct(
+    string $url,
+    string $method = HTTPMethod::GET
+  ) {
+    $this->url = $url;
+    $this->method = $method;
+    $this->addHeader('User-Agent', Env::load()->get('UserAgent'));
   }
 
+  /**
+   * Convenience function to start a new cURL GET request.
+   *
+   * @param string  Destination URL
+   * @return Curl   New Curl instance
+   */
   public static function get(string $url): self {
-    return self::to($url);
+    return new Curl($url);
   }
 
+  /**
+   * Convenience function to start a new cURL POST request.
+   *
+   * @param string  Destination URL
+   * @return Curl   New Curl instance
+   */
   public static function post(string $url): self {
-    $request = self::to($url);
-    $request->method = HTTPMethod::POST;
-    return $request;
+    return new Curl($url, HTTPMethod::POST);
   }
 
+  /**
+   * Convenience function to start a new cURL PUT request.
+   *
+   * @param string  Destination URL
+   * @return Curl   New Curl instance
+   */
   public static function put(string $url): self {
-    $request = self::to($url);
-    $request->method = HTTPMethod::PUT;
-    return $request;
+    return new Curl($url, HTTPMethod::PUT);
   }
 
+  /**
+   * Convenience function to start a new cURL DELETE request.
+   *
+   * @param string  Destination URL
+   * @return Curl   New Curl instance
+   */
+  public static function delete(string $url): self {
+    return new Curl($url, HTTPMethod::DELETE);
+  }
+
+  /**
+   * Adds a new HTTP header to the cURL call. Duplicate headers are included
+   * as-is; they are not overwritten.
+   *
+   * @param string  Name of the header e.g. Content-Type
+   * @param mixed   Value for the header e.g. application/json
+   * @return Curl   Existing Curl instance
+   */
   public function addHeader(string $header_name, $header_value): self {
     $this->headers[] = sprintf('%s: %s', $header_name, (string)$header_value);
     return $this;
   }
 
+  /**
+   * Adds a new POST param. Duplicate params are subsequently overwritten.
+   *
+   * @param string  Name of the param e.g. grant_type
+   * @param mixed   Value of the param e.g. refresh_token
+   * @return Curl   Existing Curl instance
+   */
   public function addPostParam(string $param_name, $param_value): self {
     $this->postParams[$param_name] = $param_value;
     return $this;
   }
 
+  /**
+   * Adds a new GET query param appended to the URL. Duplicate params are
+   * subsequently overwritten.
+   *
+   * @param string  Name of the param e.g. position
+   * @param mixed   Value of the param e.g. 0
+   * @return Curl   Existing Curl instance
+   */
   public function addQueryParam(string $param_name, $param_value): self {
     $this->queryParams[$param_name] = $param_value;
     return $this;
   }
 
+  /**
+   * Conveniene function to add a JSON request body. Will NOT send POST
+   * parameters if this function is used.
+   *
+   * @param string  JSON-encoded request body
+   * @return Curl   Existing Curl instance
+   */
   public function setJsonBody(string $body): self {
     $this->body = $body;
     $this->json = true;
     return $this;
   }
 
+  /**
+   * Executes the cURL request that has been built out.
+   *
+   * @return array<mixed>   Request response JSON-decoded
+   *
+   * @throws Exception  if the cURL request fails to initiate (system error)
+   * @throws Exception  if a non-2XX status code is returned
+   */
   public function exec(): array {
     if (empty($this->queryParams)) {
       $request_uri = $this->url;

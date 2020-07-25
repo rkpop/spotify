@@ -30,7 +30,12 @@ $month_playlist_id = SpotifyClient::createOrFetchPlaylist($month, $year);
 $current_playlist_id = SpotifyClient::createOrFetchCurrentPlaylist();
 
 foreach ($releases as $release_url) {
+  if (DB::connect()->isProcessed($release_url)) {
+    continue;
+  }
+
   SpotifyClient::addReleaseToPlaylist($release_url, $month_playlist_id);
   SpotifyClient::addReleaseToPlaylist($release_url, $current_playlist_id);
+  
   DB::connect()->markAsProcessed($release_url);
 }
