@@ -1,4 +1,4 @@
-<?php 
+<?php
 declare(strict_types = 1);
 
 require_once('src/RedditClient.php');
@@ -26,7 +26,8 @@ if ($day === 1 && $hour === 0 && $minute < 15) {
 }
 
 $releases = RedditClient::getReleases($month, $year);
-$month_playlist_id = SpotifyClient::createOrFetchPlaylist($month, $year);
+$year_playlist_id = SpotifyClient::createOrFetchYearPlaylist($year);
+$month_playlist_id = SpotifyClient::createOrFetchMonthPlaylist($month, $year);
 $current_playlist_id = SpotifyClient::createOrFetchCurrentPlaylist();
 
 foreach ($releases as $release_url) {
@@ -35,7 +36,8 @@ foreach ($releases as $release_url) {
   }
 
   SpotifyClient::addReleaseToPlaylist($release_url, $month_playlist_id);
+  SpotifyClient::addReleaseToPlaylist($release_url, $year_playlist_id);
   SpotifyClient::addReleaseToPlaylist($release_url, $current_playlist_id);
-  
+
   DB::connect()->markAsProcessed($release_url);
 }

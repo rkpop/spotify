@@ -28,7 +28,7 @@ final class SpotifyClient {
       ->addPostParam('refresh_token', Env::load()->get('RefreshToken'))
       ->addHeader('Authorization', self::getBasicHeader())
       ->exec();
-    
+
     $new_access_token = $response['access_token'];
     Env::load()->set('AccessToken', $new_access_token);
 
@@ -77,8 +77,8 @@ final class SpotifyClient {
     DB::connect()->addPlaylist(
       $spotify_id,
       $name,
-      $month,
-      $year,
+      'Current',
+      0,
     );
     return $spotify_id;
   }
@@ -107,6 +107,51 @@ final class SpotifyClient {
   }
 
   /**
+   * Since per-month playlists can be a bit thrashy given how frequently they
+   * change, probably a good idea to also have playlists that cover the entire
+   * year!
+   *
+   * @param int     Full year e.g. 2020
+   * @return string The Spotify ID of the playlist
+   */
+  public static function createOrFetchYearPlaylist(
+    int $year
+  ): string {
+    // We use the magic value of 'All' for the 'Month' since the year is the
+    // one we really care about here.
+    $playlist_id = DB::connect()->getPlaylistID('All', $year);
+    if ($playlist_id !== null) {
+      return $playlist_id;
+    }
+
+    $name = "$year Releases";
+    $description = sprintf(
+      'Auto-updating playlist of K-Pop Releases over the entire year of %d',
+      $year,
+    );
+    $body = [
+      'name' => $name,
+      'public' => true,
+      'description' => $description,
+    ];
+    $uri = Env::load()->get('APIURI').'/me/playlists';
+    $response = Curl::post($uri)
+      ->addHeader('Authorization', self::getBearerHeader())
+      ->setJsonBody(json_encode($body))
+      ->exec();
+
+    $spotify_id = $response['id'];
+
+    DB::connect()->addPlaylist(
+      $spotify_id,
+      $name,
+      'All',
+      $year,
+    );
+    return $spotify_id;
+  }
+
+  /**
    * Release playlists are per-month. So in order to reference a specific playlist,
    * all we need to provide is the month and year. This method checks to see if we
    * have a playlist saved for that particular month+year.
@@ -117,7 +162,7 @@ final class SpotifyClient {
    *
    * @return string The Spotify ID of the playlist
    */
-  public static function createOrFetchPlaylist(
+  public static function createOrFetchMonthPlaylist(
     string $month,
     int $year
   ): string {
@@ -143,9 +188,9 @@ final class SpotifyClient {
       ->addHeader('Authorization', self::getBearerHeader())
       ->setJsonBody(json_encode($body))
       ->exec();
-    
+
     $spotify_id = $response['id'];
-    
+
     DB::connect()->addPlaylist(
       $spotify_id,
       $name,
@@ -175,7 +220,7 @@ final class SpotifyClient {
     if (count($matches) > 1) {
       self::addAlbumToPlaylist($release_url, $playlist_id);
       return;
-    } 
+    }
 
     preg_match('/.*\/track\/([A-z0-9]+)/', $release_url, $matches);
     if (count($matches) > 1) {
@@ -268,8 +313,8 @@ final class SpotifyClient {
    */
   private static function getBasicHeader(): string {
     $auth_info = sprintf(
-      '%s:%s', 
-      Env::load()->get('ClientID'), 
+      '%s:%s',
+      Env::load()->get('ClientID'),
       Env::load()->get('ClientSecret')
     );
     $auth_info = base64_encode($auth_info);
