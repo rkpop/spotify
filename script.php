@@ -8,7 +8,7 @@ SpotifyClient::refreshAccessToken();
 
 $minute = (int)date('i');
 $hour = (int)date('G');
-$day = date('j');
+$day = (int)date('j');
 $month = date('F');
 $year = (int)date('Y');
 
@@ -38,6 +38,37 @@ foreach ($releases as $release_url) {
   SpotifyClient::addReleaseToPlaylist($release_url, $month_playlist_id);
   SpotifyClient::addReleaseToPlaylist($release_url, $year_playlist_id);
   SpotifyClient::addReleaseToPlaylist($release_url, $current_playlist_id);
+
+  DB::connect()->markAsProcessed($release_url);
+}
+
+// Since releases can still get added to the previous month's wiki after we have
+// already switched to a new month, we still want to check the previous one for
+// the first week.
+if ($day > 7) {
+  // If it's after a week, don't bother. They should have been added by now...
+  return;
+}
+
+$previous_month = date('F', strtotime('previous month'));
+if ($previous_month === 'December') {
+  // Fun edge case. We've also moved one year forwards. Gotta adjust that too.
+  $year -= 1;
+}
+
+$releases = RedditClient::getReleases($previous_month, $year);
+$year_playlist_id = SpotifyClient::createOrFetchYearPlaylist($year);
+$month_playlist_id =
+  SpotifyClient::createOrFetchMonthPlaylist($previous_month, $year);
+
+foreach ($releases as $release_url) {
+  if (DB::connect()->isProcessed($release_url)) {
+    continue;
+  }
+
+  SpotifyClient::addReleaseToPlaylist($release_url, $month_playlist_id);
+  SpotifyClient::addReleaseToPlaylist($release_url, $year_playlist_id);
+  // We don't update the "Current Releases" playlist because this isn't current
 
   DB::connect()->markAsProcessed($release_url);
 }
