@@ -22,19 +22,21 @@ final class SpotifyClient {
    * It then writes the new access token back to our Env file.
    */
   public static function refreshAccessToken(): void {
+    $refresh_token = DB::connect()->getCredential('spotify_refresh');
+
     $uri = Env::load()->get('AuthURI').'/token';
     $response = Curl::post($uri)
       ->addPostParam('grant_type', 'refresh_token')
-      ->addPostParam('refresh_token', Env::load()->get('RefreshToken'))
+      ->addPostParam('refresh_token', $refresh_token)
       ->addHeader('Authorization', self::getBasicHeader())
       ->exec();
 
     $new_access_token = $response['access_token'];
-    Env::load()->set('AccessToken', $new_access_token);
+    DB::connect()->setCredential('spotify_access', $new_access_token);
 
     if (array_key_exists('refresh_token', $response)) {
       $new_refresh_token = $response['refresh_token'];
-      Env::load()->set('RefreshToken', $new_refresh_token);
+      DB::connect()->setCredential('spotify_refresh', $new_refresh_token);
     }
   }
 
@@ -328,6 +330,7 @@ final class SpotifyClient {
    * @return string Header value
    */
   private static function getBearerHeader(): string {
-    return 'Bearer '.Env::load()->get('AccessToken');
+    $access_token = DB::connect()->getCredential('spotify_access');
+    return 'Bearer '.$access_token;
   }
 }

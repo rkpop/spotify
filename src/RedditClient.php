@@ -1,6 +1,7 @@
 <?php
 declare(strict_types = 1);
 
+require_once('DB.php');
 require_once('Curl.php');
 require_once('Env.php');
 
@@ -26,8 +27,25 @@ final class RedditClient {
     string $month,
     int $year
   ): array {
+    $hour = (int)date('G');
+    if ($hour === 0 || $hour === 12) {
+      $uri = Env::load()->get('RedditTokenLink');
+      $response = Curl::post($uri)
+        ->setAuth(
+          Env::load()->get('RedditClientID'),
+          Env::load()->get('RedditClientSecret'),
+        )
+        ->addPostParam('grant_type', 'client_credentials')
+        ->exec();
+      $access_token = $response['access_token'];
+      DB::connect()->setCredential('reddit', $access_token);
+    }
+
     $uri = Env::load()->get('ReleasesLink')."/$year/$month.json";
-    $response = Curl::get($uri)->exec();
+    $auth_header = 'bearer '.DB::connect()->getCredential('reddit');
+    $response = Curl::get($uri)
+      ->addHeader('Authorization', $auth_header)
+      ->exec();
     $wiki_content = $response['data']['content_md'];
     $wiki_content = str_replace("\r\n", "\n", $wiki_content);
     $rows = explode("\n", $wiki_content);

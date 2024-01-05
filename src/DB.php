@@ -40,6 +40,46 @@ final class DB {
   }
 
   /**
+   * Fetch the given credential value from the database
+   *
+   * @param string      Name of the credential
+   * @return string     Value of the credential
+   */
+  public function getCredential(
+    string $name
+  ): string {
+    $stm = $this->db->prepare(
+      'SELECT `value` FROM `credentials` WHERE `name` = ?',
+    );
+    $stm->bindValue(1, $name);
+    $result = $stm->execute();
+
+    $rows = $result->fetchArray(SQLITE3_ASSOC);
+    if ($rows === false) {
+      throw new Exception('Unknown credential: '.$name);
+    }
+    return $rows['value'];
+  }
+
+  /**
+   * Set the given credential value
+   *
+   * @param string      Name of the credential
+   * @param string      Value of the credential
+   */
+  public function setCredential(
+    string $name,
+    string $value
+  ): void {
+    $stm = $this->db->prepare(
+      'UPDATE `credentials` SET `value` = ? WHERE `name` = ?',
+    );
+    $stm->bindValue(1, $value);
+    $stm->bindValue(2, $name);
+    $result = $stm->execute();
+  }
+
+  /**
    * Add a newly-created Spotify playlist to the database. This is mostly to
    * keep track of the Spotify ID since that's what we need to interface with
    * the web API.

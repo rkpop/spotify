@@ -39,6 +39,9 @@ final class Curl {
   private array $headers = [];
   private string $body = '';
 
+  private ?string $username = null;
+  private ?string $password = null;
+
   private function __construct(
     string $url,
     string $method = HTTPMethod::GET
@@ -140,6 +143,22 @@ final class Curl {
   }
 
   /**
+   * Conveniene function to authenticate the request using HTTP BASIC
+   * authentciation.
+   *
+   * Subsequent invocations of the method will override prior values.
+   *
+   * @param string  username
+   * @param string  password
+   * @return Curl   Existing Curl instance
+   */
+  public function setAuth(string $username, string $password): self {
+    $this->username = $username;
+    $this->password = $password;
+    return $this;
+  }
+
+  /**
    * Executes the cURL request that has been built out.
    *
    * @return array<mixed>   Request response JSON-decoded
@@ -170,6 +189,14 @@ final class Curl {
         $value = http_build_query($this->postParams);
       }
       curl_setopt($ch, CURLOPT_POSTFIELDS, $value);
+    }
+
+    if ($this->username !== null) {
+      curl_setopt(
+        $ch,
+        CURLOPT_USERPWD,
+        $this->username . ":" . $this->password,
+      );
     }
 
     curl_setopt($ch, CURLOPT_HTTPHEADER, $this->headers);
